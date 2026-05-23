@@ -4,17 +4,23 @@
 
 Robot9001-style originality challenge for Bitsocial PKC communities.
 
-This package runs on the community node as a deterministic PKC challenge. It does not use AI. It scans the community owner's PKC comments database for exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
+This package runs on a Bitsocial community owner node as a deterministic PKC challenge. It is not specific to 5chan; any Bitsocial community can use it when the operator wants Robot9001-style anti-repost behavior. It does not use AI. It scans the community owner's PKC comments database for exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
 
 ## Installation
+
+Run this on the Bitsocial node that owns the community:
 
 ```bash
 bitsocial challenge install @bitsocial/r9k-challenge
 ```
 
+After publication, this challenge is intended to be discoverable from the Bitsocial app directory under anti-spam:
+
+https://bitsocial.net/apps?category=anti-spam
+
 ## Configuration
 
-Add the challenge to an `/r9k/` community's `settings.challenges`:
+Add the challenge to the community's `settings.challenges`:
 
 ```js
 [
