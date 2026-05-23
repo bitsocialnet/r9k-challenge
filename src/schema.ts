@@ -4,7 +4,7 @@ export const DEFAULT_STATE_PATH = "~/.bitsocial-r9k-challenge-state.json";
 export const DEFAULT_MINIMUM_ORIGINAL_CONTENT_LENGTH = 16;
 export const DEFAULT_TRANSGRESSION_DECAY_INTERVAL_SECONDS = 24 * 60 * 60;
 export const DEFAULT_PENALTY_BASE_SECONDS = 2;
-export const DEFAULT_ERROR = "Rejected by Robot9001.";
+export const DEFAULT_ERROR = "Rejected by Robot9000.";
 
 export type ParsedOptions = {
   statePath: string;
@@ -34,7 +34,7 @@ export const optionInputs = [
     option: "statePath",
     label: "State path",
     description:
-      "Private JSON file used to persist original text hashes and temporary Robot9001 bans.",
+      "Private JSON file used to persist original text hashes and temporary Robot9000 bans.",
     default: DEFAULT_STATE_PATH,
     required: true,
   },
@@ -49,7 +49,7 @@ export const optionInputs = [
   {
     option: "transgressionDecayIntervalSeconds",
     label: "Transgression decay interval",
-    description: "Seconds after which one Robot9001 transgression is forgiven.",
+    description: "Seconds after which one Robot9000 transgression is forgiven.",
     default: String(DEFAULT_TRANSGRESSION_DECAY_INTERVAL_SECONDS),
     required: true,
   },
@@ -65,7 +65,7 @@ export const optionInputs = [
     option: "maxPenaltySeconds",
     label: "Maximum penalty seconds",
     description:
-      "Optional cap for the temporary ban duration. Leave empty for uncapped Robot9001 doubling.",
+      "Optional cap for the temporary ban duration. Leave empty for uncapped Robot9000 doubling.",
     default: "",
     placeholder: "2592000",
   },
@@ -94,7 +94,7 @@ export const optionInputs = [
   {
     option: "error",
     label: "Error message",
-    description: "Prefix shown when Robot9001 rejects a publication.",
+    description: "Prefix shown when Robot9000 rejects a publication.",
     default: DEFAULT_ERROR,
     required: true,
   },

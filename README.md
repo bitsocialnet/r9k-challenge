@@ -2,11 +2,11 @@
 
 # @bitsocial/r9k-challenge
 
-Robot9001-style originality challenge for Bitsocial communities.
+Robot9000-style originality challenge for Bitsocial communities.
 
-This package runs on a Bitsocial community owner node as a deterministic Bitsocial challenge. It is not specific to 5chan; any Bitsocial community can use it when the operator wants Robot9001-style anti-repost behavior. It does not use AI. It scans the community owner's local comments database for exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
+This package runs on a Bitsocial community owner node as a deterministic Bitsocial challenge. It is not specific to 5chan; any Bitsocial community can use it when the operator wants Robot9000-style anti-repost behavior. It does not use AI. It scans the community owner's local comments database for exact text reposts after Robot9000 normalization and applies escalating temporary bans for failed attempts.
 
-Robot9001 follows the Robot9000 anti-repost idea originally described by Randall Munroe of xkcd.
+Robot9000 is based on the anti-repost idea originally described by Randall Munroe in [ROBOT9000 and #xkcd-signal: Attacking Noise in Chat](https://blog.xkcd.com/2008/01/14/robot9000-and-xkcd-signal-attacking-noise-in-chat/).
 
 ## Installation
 
@@ -31,7 +31,7 @@ Add the challenge to the community's `settings.challenges`:
 ];
 ```
 
-Default options implement the public Robot9001 behavior:
+Default options implement Robot9000-style behavior:
 
 | Option                              | Default                                 | Behavior                                                            |
 | ----------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
@@ -43,9 +43,9 @@ Default options implement the public Robot9001 behavior:
 | `blockUnicode`                      | `true`                                  | Rejects non-ASCII text                                              |
 | `stripBacklinks`                    | `true`                                  | Ignores numeric backlinks like `>>123`                              |
 | `requireText`                       | `true`                                  | Rejects posts without title/body text                               |
-| `error`                             | `Rejected by Robot9001.`                | Error prefix shown to users                                         |
+| `error`                             | `Rejected by Robot9000.`                | Error prefix shown to users                                         |
 
-The public 4chan rule list says posts require "a certain minimum amount of original content" but does not expose the exact number. This package uses `16` normalized characters as its default and keeps it configurable per board.
+Posts require enough original content to avoid low-effort duplicates. This package uses `16` normalized characters as its default and keeps it configurable per board.
 
 ## Behavior
 
@@ -76,7 +76,7 @@ corepack yarn build
 
 ## Test Coverage
 
-The test suite covers Robot9001 normalization, minimum text checks, Unicode blocking, image/link exclusion, escalating and decaying temporary bans, content edits, missing database fail-closed behavior, and duplicate detection against both the challenge state file and a real in-memory SQLite `comments`/`commentUpdates` database.
+The test suite covers Robot9000 normalization, minimum text checks, Unicode blocking, image/link exclusion, escalating and decaying temporary bans, content edits, missing database fail-closed behavior, and duplicate detection against both the challenge state file and a real in-memory SQLite `comments`/`commentUpdates` database.
 
 The coverage badge reports line coverage generated with `yarn test:coverage`. On pushes to `master`, CI writes a Shields-compatible endpoint payload and publishes it to GitHub Pages.
 

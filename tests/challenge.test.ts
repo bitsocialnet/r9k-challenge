@@ -5,7 +5,7 @@ import type { CommunityChallengeSetting } from "@pkcprotocol/pkc-js/dist/node/co
 import type { DecryptedChallengeRequestMessageTypeWithCommunityAuthor } from "@pkcprotocol/pkc-js/dist/node/pubsub-messages/types.js";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import ChallengeFileFactory, { normalizeRobot9001Text } from "../src/index.js";
+import ChallengeFileFactory, { normalizeRobot9000Text } from "../src/index.js";
 
 const baseCommunity = {
   address: "random.bso",
@@ -195,24 +195,24 @@ afterEach(async () => {
   await rm(tempDir, { force: true, recursive: true });
 });
 
-describe("Robot9001 normalization", () => {
+describe("Robot9000 normalization", () => {
   it("strips numeric backlinks and collapses whitespace", () => {
     expect(
-      normalizeRobot9001Text(">>2   lolwut\n\n>>123", { stripBacklinks: true }),
+      normalizeRobot9000Text(">>2   lolwut\n\n>>123", { stripBacklinks: true }),
     ).toBe("lolwut");
     expect(
-      normalizeRobot9001Text(">>2   lolwut", { stripBacklinks: false }),
+      normalizeRobot9000Text(">>2   lolwut", { stripBacklinks: false }),
     ).toBe(">>2 lolwut");
   });
 });
 
 describe("Bitsocial r9k challenge package", () => {
-  it("exposes Robot9001 metadata and configurable defaults", () => {
+  it("exposes Robot9000 metadata and configurable defaults", () => {
     const challengeFile = ChallengeFileFactory({} as CommunityChallengeSetting);
     const options = challengeFile.optionInputs?.map((input) => input.option);
 
     expect(challengeFile.type).toBe("text/plain");
-    expect(challengeFile.description).toMatch(/Robot9001/i);
+    expect(challengeFile.description).toMatch(/Robot9000/i);
     expect(options).toContain("statePath");
     expect(options).toContain("minimumOriginalContentLength");
     expect(options).toContain("transgressionDecayIntervalSeconds");

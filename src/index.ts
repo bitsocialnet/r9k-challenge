@@ -17,7 +17,7 @@ import {
 
 const type = "text/plain";
 const description =
-  "Reject exact text reposts with Robot9001-style escalating temporary bans.";
+  "Reject exact text reposts with Robot9000-style escalating temporary bans.";
 const STATE_VERSION = 1;
 
 const OriginalEntrySchema = z
@@ -133,7 +133,7 @@ const readState = async (statePath: string): Promise<StateFile> => {
     const raw = await readFile(statePath, "utf8");
     const parsed = StateFileSchema.safeParse(JSON.parse(raw) as unknown);
     if (!parsed.success) {
-      throw new Error(`Invalid Robot9001 state file: ${parsed.error.message}`);
+      throw new Error(`Invalid Robot9000 state file: ${parsed.error.message}`);
     }
     return parsed.data;
   } catch (error) {
@@ -175,7 +175,7 @@ const withState = async <T>(
   }
 };
 
-export const normalizeRobot9001Text = (
+export const normalizeRobot9000Text = (
   text: string,
   { stripBacklinks }: Pick<ParsedOptions, "stripBacklinks">,
 ) => {
@@ -336,7 +336,7 @@ const getViolationMessage = ({
     return `You are temporarily banned from posting until ${formatTimestamp(banExpiresAt ?? 0)}.`;
   }
   if (violation === "missing-author") {
-    return "The author identity could not be verified for Robot9001 enforcement.";
+    return "The author identity could not be verified for Robot9000 enforcement.";
   }
   if (violation === "missing-text") {
     return "Posts require text.";
@@ -415,7 +415,7 @@ const communityDatabaseHasOriginal = ({
 }) =>
   queryExistingCommentRows(db, target.excludeCid).some(
     (row) =>
-      normalizeRobot9001Text(getStoredCommentText(row), options) ===
+      normalizeRobot9000Text(getStoredCommentText(row), options) ===
       normalizedText,
   );
 
@@ -430,7 +430,7 @@ const checkOriginality = async ({
   db: SqliteDatabase;
   options: ParsedOptions;
 }): Promise<ChallengeResultInput> => {
-  const normalizedText = normalizeRobot9001Text(target.rawText, options);
+  const normalizedText = normalizeRobot9000Text(target.rawText, options);
   const statePath = expandPath(options.statePath);
   const now = nowSeconds();
 
@@ -569,7 +569,7 @@ const getChallenge = async ({
   if (!db) {
     return reject(
       parsedOptions.data,
-      "Robot9001 community database is unavailable.",
+      "Robot9000 community database is unavailable.",
     );
   }
 
@@ -585,7 +585,7 @@ const getChallenge = async ({
       error instanceof Error ? error.message : "Unknown state error";
     return reject(
       parsedOptions.data,
-      `Robot9001 state unavailable: ${message}`,
+      `Robot9000 state unavailable: ${message}`,
     );
   }
 };
