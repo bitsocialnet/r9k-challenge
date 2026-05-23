@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1](https://github.com/bitsocialnet/r9k-challenge/compare/v0.1.0...v0.1.1) (2026-05-23)
+
+### Bug Fixes
+
+- **package:** publish Robot9000 metadata ([eb2f4d8](https://github.com/bitsocialnet/r9k-challenge/commit/eb2f4d8a65feb34bd41b92d4abd48d0c21a26520))
+
 ## 0.1.0 (2026-05-23)
 
 ### Features
