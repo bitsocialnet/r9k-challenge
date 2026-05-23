@@ -1,10 +1,11 @@
 {
   "name": "@bitsocial/r9k-challenge",
   "version": "0.1.0",
-  "description": "Robot9001-style originality challenge for Bitsocial PKC communities",
+  "description": "Robot9001-style originality challenge for Bitsocial communities",
   "keywords": [
     "bitsocial",
-    "pkc",
+    "bitsocial-protocol",
+    "anti-spam",
     "challenge",
     "r9k",
     "robot9001",

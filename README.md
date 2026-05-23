@@ -2,9 +2,9 @@
 
 # @bitsocial/r9k-challenge
 
-Robot9001-style originality challenge for Bitsocial PKC communities.
+Robot9001-style originality challenge for Bitsocial communities.
 
-This package runs on a Bitsocial community owner node as a deterministic PKC challenge. It is not specific to 5chan; any Bitsocial community can use it when the operator wants Robot9001-style anti-repost behavior. It does not use AI. It scans the community owner's PKC comments database for exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
+This package runs on a Bitsocial community owner node as a deterministic Bitsocial challenge. It is not specific to 5chan; any Bitsocial community can use it when the operator wants Robot9001-style anti-repost behavior. It does not use AI. It scans the community owner's local comments database for exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
 
 ## Installation
 
@@ -14,7 +14,7 @@ Run this on the Bitsocial node that owns the community:
 bitsocial challenge install @bitsocial/r9k-challenge
 ```
 
-After publication, this challenge is intended to be discoverable from the Bitsocial app directory under anti-spam:
+This challenge is listed in the Bitsocial app directory under anti-spam:
 
 https://bitsocial.net/apps?category=anti-spam
 
@@ -54,13 +54,13 @@ The public 4chan rule list says posts require "a certain minimum amount of origi
 - Posts need text; image-only posts fail.
 - A failed originality attempt temporarily bans the author for `2^n` seconds, where `n` is the current transgression count.
 - The transgression count decays by one every `transgressionDecayIntervalSeconds`.
-- State stores SHA-256 hashes for newly accepted text plus temporary-ban counters, not raw post text. Existing-board originality comes from the PKC database scan.
+- State stores SHA-256 hashes for newly accepted text plus temporary-ban counters, not raw post text. Existing-board originality comes from the local database scan.
 
 ## Ban Semantics
 
-PKC exposes `author.community.banExpiresAt` for moderator bans, but a challenge failure happens before the offending comment is accepted and therefore has no accepted `commentCid` to moderate. This package enforces the same timed-ban behavior inside the challenge state and rejects the author's later challenge requests until `banExpiresAt`.
+Bitsocial exposes `author.community.banExpiresAt` for moderator bans, but a challenge failure happens before the offending comment is accepted and therefore has no accepted `commentCid` to moderate. This package enforces the same timed-ban behavior inside the challenge state and rejects the author's later challenge requests until `banExpiresAt`.
 
-If PKC later exposes a safe challenge-side author-ban API for rejected publications, this package can map the same penalty state to native `banExpiresAt`.
+If Bitsocial later exposes a safe challenge-side author-ban API for rejected publications, this package can map the same penalty state to native `banExpiresAt`.
 
 ## Development
 
