@@ -1,0 +1,274 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { CommunityChallengeSetting } from "@pkcprotocol/pkc-js/dist/node/community/types.js";
+import type { DecryptedChallengeRequestMessageTypeWithCommunityAuthor } from "@pkcprotocol/pkc-js/dist/node/pubsub-messages/types.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import ChallengeFileFactory, { normalizeRobot9001Text } from "../src/index.js";
+
+const community = {
+  address: "random.bso",
+  title: "Random",
+};
+
+let tempDir: string;
+let statePath: string;
+
+const settings = (options: Record<string, unknown> = {}) =>
+  ({
+    options: {
+      statePath,
+      minimumOriginalContentLength: "1",
+      transgressionDecayIntervalSeconds: "86400",
+      ...options,
+    },
+  }) as CommunityChallengeSetting;
+
+const createCommentRequest = (
+  content: string,
+  overrides: {
+    title?: string;
+    link?: string;
+    authorAddress?: string;
+    signaturePublicKey?: string;
+  } = {},
+) =>
+  ({
+    comment: {
+      title: overrides.title,
+      content,
+      link: overrides.link,
+      author: {
+        address: overrides.authorAddress ?? "author-1",
+      },
+      signature: {
+        publicKey: overrides.signaturePublicKey ?? "author-public-key-1",
+      },
+    },
+  }) as DecryptedChallengeRequestMessageTypeWithCommunityAuthor;
+
+const createContentEditRequest = (
+  content: string,
+  signaturePublicKey = "author-public-key-1",
+) =>
+  ({
+    commentEdit: {
+      commentCid: "comment-1",
+      content,
+      signature: {
+        publicKey: signaturePublicKey,
+      },
+    },
+  }) as DecryptedChallengeRequestMessageTypeWithCommunityAuthor;
+
+const createVoteRequest = () =>
+  ({
+    vote: {
+      commentCid: "comment-1",
+      vote: 1,
+    },
+  }) as DecryptedChallengeRequestMessageTypeWithCommunityAuthor;
+
+const runChallenge = (
+  request: DecryptedChallengeRequestMessageTypeWithCommunityAuthor,
+  optionOverrides: Record<string, unknown> = {},
+) => {
+  const challengeFile = ChallengeFileFactory(settings(optionOverrides));
+  return challengeFile.getChallenge({
+    challengeSettings: settings(optionOverrides),
+    challengeRequestMessage: request,
+    challengeIndex: 0,
+    community,
+  });
+};
+
+const readState = async () =>
+  JSON.parse(await readFile(statePath, "utf8")) as Record<string, unknown>;
+
+beforeEach(async () => {
+  tempDir = await mkdtemp(join(tmpdir(), "r9k-challenge-"));
+  statePath = join(tempDir, "state.json");
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-05-23T00:00:00Z"));
+});
+
+afterEach(async () => {
+  vi.useRealTimers();
+  await rm(tempDir, { force: true, recursive: true });
+});
+
+describe("Robot9001 normalization", () => {
+  it("strips numeric backlinks and collapses whitespace", () => {
+    expect(
+      normalizeRobot9001Text(">>2   lolwut\n\n>>123", { stripBacklinks: true }),
+    ).toBe("lolwut");
+    expect(
+      normalizeRobot9001Text(">>2   lolwut", { stripBacklinks: false }),
+    ).toBe(">>2 lolwut");
+  });
+});
+
+describe("Bitsocial r9k challenge package", () => {
+  it("exposes Robot9001 metadata and configurable defaults", () => {
+    const challengeFile = ChallengeFileFactory({} as CommunityChallengeSetting);
+    const options = challengeFile.optionInputs?.map((input) => input.option);
+
+    expect(challengeFile.type).toBe("text/plain");
+    expect(challengeFile.description).toMatch(/Robot9001/i);
+    expect(options).toContain("statePath");
+    expect(options).toContain("minimumOriginalContentLength");
+    expect(options).toContain("transgressionDecayIntervalSeconds");
+    expect(options).toContain("penaltyBaseSeconds");
+    expect(options).toContain("blockUnicode");
+    expect(options).toContain("stripBacklinks");
+    expect(options).toContain("requireText");
+  });
+
+  it("allows unique text and persists only the normalized text hash", async () => {
+    const result = await runChallenge(createCommentRequest("unique thought"));
+
+    expect(result).toEqual({ success: true });
+    const state = await readState();
+    expect(JSON.stringify(state)).not.toContain("unique thought");
+    expect(JSON.stringify(state)).toContain("normalizedLength");
+  });
+
+  it("rejects exact reposts after backlink normalization", async () => {
+    await expect(runChallenge(createCommentRequest("lolwut"))).resolves.toEqual(
+      { success: true },
+    );
+
+    const result = await runChallenge(createCommentRequest(">>2 lolwut"));
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("Exact repost detected");
+    expect(result.error).toContain("Temporary ban: 2 seconds");
+  });
+
+  it("ignores media links when checking originality", async () => {
+    await expect(
+      runChallenge(
+        createCommentRequest("same image different comment", {
+          link: "https://cdn.example/a.png",
+        }),
+      ),
+    ).resolves.toEqual({
+      success: true,
+    });
+    await expect(
+      runChallenge(
+        createCommentRequest("another comment", {
+          link: "https://cdn.example/a.png",
+        }),
+      ),
+    ).resolves.toEqual({ success: true });
+
+    const result = await runChallenge(
+      createCommentRequest("same image different comment", {
+        link: "https://cdn.example/b.png",
+      }),
+    );
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("Exact repost detected");
+  });
+
+  it("combines post title and content for originality", async () => {
+    await expect(
+      runChallenge(createCommentRequest("body", { title: "subject" })),
+    ).resolves.toEqual({ success: true });
+
+    const result = await runChallenge(
+      createCommentRequest("body", { title: "subject" }),
+    );
+
+    expect(result).toMatchObject({ success: false });
+  });
+
+  it("blocks Unicode by default", async () => {
+    const result = await runChallenge(createCommentRequest("hello Кириллица"));
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("Unicode is not allowed");
+  });
+
+  it("requires text and a minimum amount of normalized original content", async () => {
+    await expect(
+      runChallenge(
+        createCommentRequest("", { link: "https://cdn.example/a.png" }),
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining("Posts require text"),
+    });
+
+    await expect(
+      runChallenge(
+        createCommentRequest("short", { authorAddress: "author-2" }),
+        { minimumOriginalContentLength: "10" },
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining("at least 10"),
+    });
+  });
+
+  it("enforces active temporary bans without increasing the count again", async () => {
+    await runChallenge(createCommentRequest("first"));
+    await runChallenge(createCommentRequest("first"));
+
+    const result = await runChallenge(createCommentRequest("second"));
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("temporarily banned");
+    expect(result.error).toContain("2026-05-23T00:00:02.000Z");
+  });
+
+  it("doubles the penalty after each transgression", async () => {
+    await runChallenge(createCommentRequest("first"));
+    await runChallenge(createCommentRequest("first"));
+
+    vi.setSystemTime(new Date("2026-05-23T00:00:03Z"));
+
+    await runChallenge(createCommentRequest("second"));
+    const result = await runChallenge(createCommentRequest("second"));
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("Temporary ban: 4 seconds");
+    expect(result.error).toContain("transgression 2");
+  });
+
+  it("decays the transgression count over time", async () => {
+    await runChallenge(createCommentRequest("first"));
+    await runChallenge(createCommentRequest("first"), {
+      transgressionDecayIntervalSeconds: "10",
+    });
+
+    vi.setSystemTime(new Date("2026-05-23T00:00:12Z"));
+
+    await runChallenge(createCommentRequest("second"), {
+      transgressionDecayIntervalSeconds: "10",
+    });
+    const result = await runChallenge(createCommentRequest("second"), {
+      transgressionDecayIntervalSeconds: "10",
+    });
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("Temporary ban: 2 seconds");
+    expect(result.error).toContain("transgression 1");
+  });
+
+  it("checks content edits and bypasses non-text publications", async () => {
+    await expect(
+      runChallenge(createContentEditRequest("edited text")),
+    ).resolves.toEqual({ success: true });
+    await expect(
+      runChallenge(
+        createContentEditRequest("edited text", "author-public-key-2"),
+      ),
+    ).resolves.toMatchObject({ success: false });
+    await expect(runChallenge(createVoteRequest())).resolves.toEqual({
+      success: true,
+    });
+  });
+});

@@ -1,0 +1,64 @@
+{
+  "name": "@bitsocial/r9k-challenge",
+  "version": "0.1.0",
+  "description": "Robot9001-style originality challenge for Bitsocial PKC communities",
+  "keywords": [
+    "bitsocial",
+    "pkc",
+    "challenge",
+    "r9k",
+    "robot9001",
+    "robot9000"
+  ],
+  "author": "Bitsocial Forge",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bitsocialnet/r9k-challenge.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "yarn clean && node esbuild.config.js && tsc -p tsconfig.json --emitDeclarationOnly",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage.enabled",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "zod": "4.3.5"
+  },
+  "devDependencies": {
+    "@pkcprotocol/pkc-js": "0.0.36",
+    "@types/node": "24.10.1",
+    "@vitest/coverage-v8": "4.0.16",
+    "esbuild": "0.27.2",
+    "prettier": "3.8.1",
+    "typescript": "6.0.2",
+    "vitest": "4.0.16"
+  },
+  "packageManager": "yarn@4.13.0"
+}
