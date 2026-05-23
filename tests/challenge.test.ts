@@ -6,9 +6,35 @@ import type { DecryptedChallengeRequestMessageTypeWithCommunityAuthor } from "@p
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ChallengeFileFactory, { normalizeRobot9001Text } from "../src/index.js";
 
-const community = {
+const baseCommunity = {
   address: "random.bso",
   title: "Random",
+};
+
+type StoredCommentRow = {
+  cid: string;
+  title?: string | null;
+  content?: string | null;
+};
+
+const createRuntimeCommunity = (rows: StoredCommentRow[] = []) => {
+  const all = vi.fn((excludeCid: string | null) =>
+    rows.filter((row) => excludeCid === null || row.cid !== excludeCid),
+  );
+  const prepare = vi.fn(() => ({ all }));
+
+  return {
+    community: {
+      ...baseCommunity,
+      _dbHandler: {
+        _db: {
+          prepare,
+        },
+      },
+    },
+    all,
+    prepare,
+  };
 };
 
 let tempDir: string;
@@ -49,11 +75,14 @@ const createCommentRequest = (
 
 const createContentEditRequest = (
   content: string,
-  signaturePublicKey = "author-public-key-1",
+  {
+    commentCid = "comment-1",
+    signaturePublicKey = "author-public-key-1",
+  }: { commentCid?: string; signaturePublicKey?: string } = {},
 ) =>
   ({
     commentEdit: {
-      commentCid: "comment-1",
+      commentCid,
       content,
       signature: {
         publicKey: signaturePublicKey,
@@ -72,13 +101,14 @@ const createVoteRequest = () =>
 const runChallenge = (
   request: DecryptedChallengeRequestMessageTypeWithCommunityAuthor,
   optionOverrides: Record<string, unknown> = {},
+  runtimeCommunity: unknown = createRuntimeCommunity().community,
 ) => {
   const challengeFile = ChallengeFileFactory(settings(optionOverrides));
   return challengeFile.getChallenge({
     challengeSettings: settings(optionOverrides),
     challengeRequestMessage: request,
     challengeIndex: 0,
-    community,
+    community: runtimeCommunity,
   });
 };
 
@@ -131,6 +161,35 @@ describe("Bitsocial r9k challenge package", () => {
     const state = await readState();
     expect(JSON.stringify(state)).not.toContain("unique thought");
     expect(JSON.stringify(state)).toContain("normalizedLength");
+  });
+
+  it("rejects exact reposts already stored in the community comments database", async () => {
+    const { community, prepare } = createRuntimeCommunity([
+      { cid: "old-1", content: ">>7 existing thought" },
+    ]);
+
+    const result = await runChallenge(
+      createCommentRequest("existing thought"),
+      {},
+      community,
+    );
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("Exact repost detected");
+    expect(prepare).toHaveBeenCalledWith(
+      expect.stringContaining("FROM comments"),
+    );
+  });
+
+  it("fails closed when the community database is unavailable", async () => {
+    const result = await runChallenge(
+      createCommentRequest("unique but no database"),
+      {},
+      baseCommunity,
+    );
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toContain("community database is unavailable");
   });
 
   it("rejects exact reposts after backlink normalization", async () => {
@@ -259,12 +318,27 @@ describe("Bitsocial r9k challenge package", () => {
   });
 
   it("checks content edits and bypasses non-text publications", async () => {
+    const ownEditCommunity = createRuntimeCommunity([
+      { cid: "comment-1", content: "edited text" },
+    ]).community;
+    const duplicateEditCommunity = createRuntimeCommunity([
+      { cid: "comment-2", content: "edited text" },
+    ]).community;
+
     await expect(
-      runChallenge(createContentEditRequest("edited text")),
+      runChallenge(
+        createContentEditRequest("edited text"),
+        {},
+        ownEditCommunity,
+      ),
     ).resolves.toEqual({ success: true });
     await expect(
       runChallenge(
-        createContentEditRequest("edited text", "author-public-key-2"),
+        createContentEditRequest("edited text", {
+          signaturePublicKey: "author-public-key-2",
+        }),
+        {},
+        duplicateEditCommunity,
       ),
     ).resolves.toMatchObject({ success: false });
     await expect(runChallenge(createVoteRequest())).resolves.toEqual({

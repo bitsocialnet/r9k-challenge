@@ -2,7 +2,7 @@
 
 Robot9001-style originality challenge for Bitsocial PKC communities.
 
-This package runs on the community node as a deterministic PKC challenge. It does not use AI. It rejects exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
+This package runs on the community node as a deterministic PKC challenge. It does not use AI. It scans the community owner's PKC comments database for exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
 
 ## Installation
 
@@ -23,30 +23,30 @@ Add the challenge to an `/r9k/` community's `settings.challenges`:
 
 Default options implement the public Robot9001 behavior:
 
-| Option                              | Default                                 | Behavior                                                       |
-| ----------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
-| `statePath`                         | `~/.bitsocial-r9k-challenge-state.json` | Private JSON state for original text hashes and temporary bans |
-| `minimumOriginalContentLength`      | `16`                                    | Requires this many normalized text characters                  |
-| `transgressionDecayIntervalSeconds` | `86400`                                 | Forgives one transgression per day                             |
-| `penaltyBaseSeconds`                | `2`                                     | Temporary ban duration is `2^n` seconds                        |
-| `maxPenaltySeconds`                 | empty                                   | No cap by default                                              |
-| `blockUnicode`                      | `true`                                  | Rejects non-ASCII text                                         |
-| `stripBacklinks`                    | `true`                                  | Ignores numeric backlinks like `>>123`                         |
-| `requireText`                       | `true`                                  | Rejects posts without title/body text                          |
-| `error`                             | `Rejected by Robot9001.`                | Error prefix shown to users                                    |
+| Option                              | Default                                 | Behavior                                                            |
+| ----------------------------------- | --------------------------------------- | ------------------------------------------------------------------- |
+| `statePath`                         | `~/.bitsocial-r9k-challenge-state.json` | Private JSON state for temporary bans and accepted-hash race guards |
+| `minimumOriginalContentLength`      | `16`                                    | Requires this many normalized text characters                       |
+| `transgressionDecayIntervalSeconds` | `86400`                                 | Forgives one transgression per day                                  |
+| `penaltyBaseSeconds`                | `2`                                     | Temporary ban duration is `2^n` seconds                             |
+| `maxPenaltySeconds`                 | empty                                   | No cap by default                                                   |
+| `blockUnicode`                      | `true`                                  | Rejects non-ASCII text                                              |
+| `stripBacklinks`                    | `true`                                  | Ignores numeric backlinks like `>>123`                              |
+| `requireText`                       | `true`                                  | Rejects posts without title/body text                               |
+| `error`                             | `Rejected by Robot9001.`                | Error prefix shown to users                                         |
 
 The public 4chan rule list says posts require "a certain minimum amount of original content" but does not expose the exact number. This package uses `16` normalized characters as its default and keeps it configurable per board.
 
 ## Behavior
 
-- Exact normalized text reposts are rejected.
+- Exact normalized text reposts are rejected by scanning the owner node's `comments` SQLite table during `getChallenge()`.
 - Numeric backlinks like `>>1` do not count toward originality.
 - Images, media links, and URLs are not included in the originality hash.
 - Unicode is rejected by default.
 - Posts need text; image-only posts fail.
 - A failed originality attempt temporarily bans the author for `2^n` seconds, where `n` is the current transgression count.
 - The transgression count decays by one every `transgressionDecayIntervalSeconds`.
-- State stores SHA-256 hashes and counters, not raw post text.
+- State stores SHA-256 hashes for newly accepted text plus temporary-ban counters, not raw post text. Existing-board originality comes from the PKC database scan.
 
 ## Ban Semantics
 

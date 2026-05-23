@@ -60,11 +60,13 @@ type PublicationTarget =
       kind: "comment";
       rawText: string;
       authorKey?: string;
+      excludeCid?: string;
     }
   | {
       kind: "content-edit";
       rawText: string;
       authorKey?: string;
+      excludeCid?: string;
     };
 
 type R9kViolation =
@@ -76,6 +78,20 @@ type R9kViolation =
   | "duplicate";
 
 const stateQueues = new Map<string, Promise<unknown>>();
+
+type SqliteStatement = {
+  all: (...params: unknown[]) => unknown[];
+};
+
+type SqliteDatabase = {
+  prepare: (query: string) => SqliteStatement;
+};
+
+type ExistingCommentRow = {
+  cid?: string;
+  title?: string | null;
+  content?: string | null;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -200,6 +216,7 @@ const getRequestText = (
       kind: "comment",
       rawText: parts.join("\n"),
       authorKey: getAuthorKey(comment),
+      excludeCid: stringValue(comment.cid),
     };
   }
 
@@ -211,6 +228,7 @@ const getRequestText = (
       kind: "content-edit",
       rawText: request.commentEdit.content,
       authorKey: getAuthorKey(request.commentEdit),
+      excludeCid: stringValue(request.commentEdit.commentCid),
     };
   }
 
@@ -335,13 +353,81 @@ const getViolationMessage = ({
   return `Exact repost detected. Temporary ban: ${penalty} (transgression ${transgressions ?? 0}).`;
 };
 
+const isSqliteDatabase = (value: unknown): value is SqliteDatabase =>
+  isRecord(value) && typeof value.prepare === "function";
+
+const getCommunityDatabase = (community: unknown) => {
+  if (!isRecord(community) || !isRecord(community._dbHandler)) return undefined;
+  const db = community._dbHandler._db;
+  return isSqliteDatabase(db) ? db : undefined;
+};
+
+const isExistingCommentRow = (row: unknown): row is ExistingCommentRow =>
+  isRecord(row) &&
+  (row.cid === undefined || typeof row.cid === "string") &&
+  (row.title === undefined ||
+    row.title === null ||
+    typeof row.title === "string") &&
+  (row.content === undefined ||
+    row.content === null ||
+    typeof row.content === "string");
+
+const getStoredCommentText = (row: ExistingCommentRow) =>
+  [row.title ?? undefined, row.content ?? undefined]
+    .filter((part): part is string => part !== undefined)
+    .join("\n");
+
+const queryExistingCommentRows = (
+  db: SqliteDatabase,
+  excludeCid: string | undefined,
+) =>
+  db
+    .prepare(
+      `
+      SELECT c.cid, c.title, c.content
+      FROM comments c
+      LEFT JOIN commentUpdates cu ON cu.cid = c.cid
+      WHERE (? IS NULL OR c.cid != ?)
+        AND (c.pendingApproval IS NULL OR c.pendingApproval != 1)
+        AND COALESCE(cu.approved, 1) != 0
+        AND (cu.removed IS NULL OR cu.removed IS NOT 1)
+        AND (
+            cu.edit IS NULL
+            OR json_extract(cu.edit, '$.deleted') IS NULL
+            OR json_extract(cu.edit, '$.deleted') != 1
+        )
+      ORDER BY c.rowid ASC
+      `,
+    )
+    .all(excludeCid ?? null, excludeCid ?? null)
+    .filter(isExistingCommentRow);
+
+const communityDatabaseHasOriginal = ({
+  db,
+  target,
+  normalizedText,
+  options,
+}: {
+  db: SqliteDatabase;
+  target: PublicationTarget;
+  normalizedText: string;
+  options: ParsedOptions;
+}) =>
+  queryExistingCommentRows(db, target.excludeCid).some(
+    (row) =>
+      normalizeRobot9001Text(getStoredCommentText(row), options) ===
+      normalizedText,
+  );
+
 const checkOriginality = async ({
   target,
   communityKey,
+  db,
   options,
 }: {
   target: PublicationTarget;
   communityKey: string;
+  db: SqliteDatabase;
   options: ParsedOptions;
 }): Promise<ChallengeResultInput> => {
   const normalizedText = normalizeRobot9001Text(target.rawText, options);
@@ -402,7 +488,10 @@ const checkOriginality = async ({
     }
 
     const normalizedHash = sha256(normalizedText);
-    if (communityState.originals[normalizedHash]) {
+    if (
+      communityState.originals[normalizedHash] ||
+      communityDatabaseHasOriginal({ db, target, normalizedText, options })
+    ) {
       const penalty = registerViolation({
         communityState,
         authorKey: target.authorKey,
@@ -476,10 +565,19 @@ const getChallenge = async ({
   const target = getRequestText(challengeRequestMessage);
   if (!target) return allow();
 
+  const db = getCommunityDatabase(community);
+  if (!db) {
+    return reject(
+      parsedOptions.data,
+      "Robot9001 community database is unavailable.",
+    );
+  }
+
   try {
     return await checkOriginality({
       target,
       communityKey: getCommunityKey(community),
+      db,
       options: parsedOptions.data,
     });
   } catch (error) {
