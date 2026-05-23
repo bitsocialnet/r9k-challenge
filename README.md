@@ -1,3 +1,5 @@
+[![Coverage](https://img.shields.io/endpoint?url=https://bitsocialnet.github.io/r9k-challenge/badges/coverage.json)](https://github.com/bitsocialnet/r9k-challenge/blob/master/scripts/write-coverage-badge.mjs)
+
 # @bitsocial/r9k-challenge
 
 Robot9001-style originality challenge for Bitsocial PKC communities.
@@ -60,5 +62,46 @@ If PKC later exposes a safe challenge-side author-ban API for rejected publicati
 corepack yarn install
 corepack yarn type-check
 corepack yarn test
+corepack yarn test:coverage
 corepack yarn build
 ```
+
+## Test Coverage
+
+The test suite covers Robot9001 normalization, minimum text checks, Unicode blocking, image/link exclusion, escalating and decaying temporary bans, content edits, missing database fail-closed behavior, and duplicate detection against both the challenge state file and a real in-memory SQLite `comments`/`commentUpdates` database.
+
+The coverage badge reports line coverage generated with `yarn test:coverage`. On pushes to `master`, CI writes a Shields-compatible endpoint payload and publishes it to GitHub Pages.
+
+These tests exercise the challenge package directly. They do not start a full Bitsocial node or publish over the network.
+
+## Publishing
+
+Create the GitHub release and changelog with release-it:
+
+```bash
+corepack yarn release 0.1.0
+```
+
+The command expects the current branch to have an upstream and needs a GitHub token that can create releases. It writes `CHANGELOG.md`, creates a `v0.1.0` tag, and opens the GitHub release.
+
+The first npm publish must create the package before trusted publishing can be configured:
+
+```bash
+npm publish --access public
+```
+
+After the package exists, configure npm trusted publishing:
+
+- Publisher: GitHub Actions
+- Organization: `bitsocialnet`
+- Repository: `r9k-challenge`
+- Workflow filename: `publish.yml`
+- Environment: leave blank
+
+Equivalent npm CLI command:
+
+```bash
+npm trust github @bitsocial/r9k-challenge --repo bitsocialnet/r9k-challenge --file publish.yml
+```
+
+Future releases publish automatically when `package.json` version changes on `master`. The publish workflow skips versions that already exist on npm.

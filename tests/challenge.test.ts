@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CommunityChallengeSetting } from "@pkcprotocol/pkc-js/dist/node/community/types.js";
 import type { DecryptedChallengeRequestMessageTypeWithCommunityAuthor } from "@pkcprotocol/pkc-js/dist/node/pubsub-messages/types.js";
+import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ChallengeFileFactory, { normalizeRobot9001Text } from "../src/index.js";
 
@@ -15,6 +16,13 @@ type StoredCommentRow = {
   cid: string;
   title?: string | null;
   content?: string | null;
+};
+
+type SqliteStoredCommentRow = StoredCommentRow & {
+  pendingApproval?: number | null;
+  approved?: number | null;
+  removed?: number | null;
+  edit?: string | null;
 };
 
 const createRuntimeCommunity = (rows: StoredCommentRow[] = []) => {
@@ -34,6 +42,66 @@ const createRuntimeCommunity = (rows: StoredCommentRow[] = []) => {
     },
     all,
     prepare,
+  };
+};
+
+const createSqliteCommunity = (rows: SqliteStoredCommentRow[] = []) => {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE comments (
+      cid TEXT PRIMARY KEY,
+      title TEXT,
+      content TEXT,
+      pendingApproval INTEGER
+    );
+
+    CREATE TABLE commentUpdates (
+      cid TEXT PRIMARY KEY,
+      approved INTEGER,
+      removed INTEGER,
+      edit TEXT
+    );
+  `);
+
+  const insertComment = db.prepare(`
+    INSERT INTO comments (cid, title, content, pendingApproval)
+    VALUES (?, ?, ?, ?)
+  `);
+  const insertUpdate = db.prepare(`
+    INSERT INTO commentUpdates (cid, approved, removed, edit)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  for (const row of rows) {
+    insertComment.run(
+      row.cid,
+      row.title ?? null,
+      row.content ?? null,
+      row.pendingApproval ?? null,
+    );
+
+    if (
+      row.approved !== undefined ||
+      row.removed !== undefined ||
+      row.edit !== undefined
+    ) {
+      insertUpdate.run(
+        row.cid,
+        row.approved ?? null,
+        row.removed ?? null,
+        row.edit ?? null,
+      );
+    }
+  }
+
+  return {
+    community: {
+      ...baseCommunity,
+      _dbHandler: {
+        _db: db,
+      },
+    },
+    db,
   };
 };
 
@@ -179,6 +247,46 @@ describe("Bitsocial r9k challenge package", () => {
     expect(prepare).toHaveBeenCalledWith(
       expect.stringContaining("FROM comments"),
     );
+  });
+
+  it("queries a real SQLite comments database during getChallenge", async () => {
+    const { community, db } = createSqliteCommunity([
+      { cid: "old-1", content: ">>7 database original" },
+    ]);
+
+    try {
+      const result = await runChallenge(
+        createCommentRequest("database original"),
+        {},
+        community,
+      );
+
+      expect(result).toMatchObject({ success: false });
+      expect(result.error).toContain("Exact repost detected");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("ignores SQLite rows that are pending, unapproved, removed, or deleted", async () => {
+    const { community, db } = createSqliteCommunity([
+      { cid: "pending", content: "held back", pendingApproval: 1 },
+      { cid: "unapproved", content: "held back", approved: 0 },
+      { cid: "removed", content: "held back", removed: 1 },
+      {
+        cid: "deleted",
+        content: "held back",
+        edit: JSON.stringify({ deleted: true }),
+      },
+    ]);
+
+    try {
+      await expect(
+        runChallenge(createCommentRequest("held back"), {}, community),
+      ).resolves.toEqual({ success: true });
+    } finally {
+      db.close();
+    }
   });
 
   it("fails closed when the community database is unavailable", async () => {

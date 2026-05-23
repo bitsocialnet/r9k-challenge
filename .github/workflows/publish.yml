@@ -1,0 +1,61 @@
+name: Publish Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - package.json
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install -g npm@latest
+
+      - run: corepack enable
+
+      - run: corepack yarn install --immutable
+
+      - run: corepack yarn format:check
+
+      - run: corepack yarn type-check
+
+      - run: corepack yarn test
+
+      - run: corepack yarn build
+
+      - id: package
+        shell: bash
+        run: |
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          published_version="$(npm view "$package_name" version 2>/dev/null || true)"
+
+          echo "name=$package_name" >> "$GITHUB_OUTPUT"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$published_version" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "$package_name is not published yet. Skipping push publish; create the first release manually or with workflow_dispatch after trusted publishing is configured."
+          elif [ "$published_version" = "$package_version" ]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "$package_name@$package_version is already published."
+          else
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              echo "$package_name@$package_version will be published."
+          fi
+
+      - run: npm publish --access public
+        if: steps.package.outputs.publish == 'true'
