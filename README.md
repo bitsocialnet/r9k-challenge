@@ -6,6 +6,8 @@ Robot9001-style originality challenge for Bitsocial communities.
 
 This package runs on a Bitsocial community owner node as a deterministic Bitsocial challenge. It is not specific to 5chan; any Bitsocial community can use it when the operator wants Robot9001-style anti-repost behavior. It does not use AI. It scans the community owner's local comments database for exact text reposts after Robot9001 normalization and applies escalating temporary bans for failed attempts.
 
+Robot9001 follows the Robot9000 anti-repost idea originally described by Randall Munroe of xkcd.
+
 ## Installation
 
 Run this on the Bitsocial node that owns the community:
