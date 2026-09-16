@@ -18,7 +18,7 @@ bitsocial challenge install @bitsocial/r9k-challenge
 
 This challenge is listed in the Bitsocial app directory under anti-spam:
 
-https://bitsocial.net/apps?category=anti-spam
+https://bitsocial.net/projects?category=anti-spam
 
 ## Configuration
 
