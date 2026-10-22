@@ -59,28 +59,28 @@
     "@release-it/conventional-changelog": "10.0.1",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "24.10.1",
-    "@vitest/coverage-v8": "4.0.16",
+    "@vitest/coverage-v8": "4.1.12",
     "better-sqlite3": "12.9.0",
     "esbuild": "0.27.2",
     "prettier": "3.8.1",
     "release-it": "19.2.3",
     "typescript": "7.0.2",
-    "vitest": "4.0.16"
+    "vitest": "4.1.12"
   },
   "resolutions": {
     "@conventional-changelog/git-client@npm:^1.0.0": "npm:2.7.0",
     "@libp2p/gossipsub@npm:15.0.21": "npm:15.0.23",
     "@libp2p/kad-dht@npm:^16.2.0": "npm:16.2.6",
     "@protobufjs/utf8@npm:^1.1.0": "npm:1.1.1",
-    "axios@npm:^1.7.2": "npm:1.15.2",
+    "axios@npm:^1.7.2": "npm:1.20.0",
     "basic-ftp@npm:^5.0.2": "npm:5.3.1",
     "ip-address@npm:^10.0.1": "npm:10.1.1",
-    "protobufjs@npm:^6.10.2": "npm:7.5.8",
-    "undici@npm:6.22.0": "npm:6.25.0",
+    "protobufjs@npm:^6.10.2": "npm:7.6.6",
+    "undici@npm:6.22.0": "npm:6.29.1",
     "uuid@npm:^11.0.0": "npm:11.1.1",
     "uuid@npm:13.0.0": "npm:13.0.1",
-    "ws@npm:^8.5.0": "npm:8.20.1",
-    "ws@npm:^8.18.3": "npm:8.20.1"
+    "ws@npm:^8.5.0": "npm:8.22.0",
+    "ws@npm:^8.18.3": "npm:8.22.0"
   },
   "packageManager": "yarn@4.17.1+sha512.ccbfabf7d7b6b32075088be9386fb9a2e00bb6887ef07fa56effabc890a56d53da1ccc4128d62db245fcbd3961b236d75335bdf7d5320ed6eafb7588b7ad4697"
 }
