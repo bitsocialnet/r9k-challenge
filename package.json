@@ -55,7 +55,7 @@
     "zod": "4.3.5"
   },
   "devDependencies": {
-    "@pkcprotocol/pkc-js": "0.0.36",
+    "@pkcprotocol/pkc-js": "0.0.96",
     "@release-it/conventional-changelog": "10.0.1",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "24.10.1",
@@ -69,16 +69,18 @@
   },
   "resolutions": {
     "@conventional-changelog/git-client@npm:^1.0.0": "npm:2.7.0",
-    "@libp2p/gossipsub@npm:15.0.21": "npm:15.0.23",
     "@libp2p/kad-dht@npm:^16.2.0": "npm:16.2.6",
     "@protobufjs/utf8@npm:^1.1.0": "npm:1.1.1",
     "axios@npm:^1.7.2": "npm:1.20.0",
-    "basic-ftp@npm:^5.0.2": "npm:5.3.1",
+    "basic-ftp@npm:^5.0.2": "npm:6.2.3",
     "ip-address@npm:^10.0.1": "npm:10.1.1",
+    "probe-image-size@npm:7.2.3": "npm:7.4.0",
     "protobufjs@npm:^6.10.2": "npm:7.6.6",
     "undici@npm:6.22.0": "npm:6.29.1",
+    "undici@npm:7.24.7": "npm:7.29.1",
     "uuid@npm:^11.0.0": "npm:11.1.1",
     "uuid@npm:13.0.0": "npm:13.0.1",
+    "ws@npm:8.20.0": "npm:8.22.0",
     "ws@npm:^8.5.0": "npm:8.22.0",
     "ws@npm:^8.18.3": "npm:8.22.0"
   },
