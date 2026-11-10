@@ -49,14 +49,14 @@ Posts require enough original content to avoid low-effort duplicates. This packa
 
 ## Behavior
 
-- Exact normalized text reposts are rejected by scanning the owner node's `comments` SQLite table during `getChallenge()`.
+- Exact normalized text reposts are rejected by scanning the owner node's `comments` SQLite table during `getChallenge()`, including the text of the author's latest edit from `commentUpdates`. Comments waiting for moderator approval are counted. Disapproved, removed, and deleted comments are not, and a content edit is not compared with its own comment.
 - Numeric backlinks like `>>1` do not count toward originality.
 - Images, media links, and URLs are not included in the originality hash.
 - Unicode is rejected by default.
 - Posts need text; image-only posts fail.
 - A failed originality attempt temporarily bans the author for `2^n` seconds, where `n` is the current transgression count.
 - The transgression count decays by one every `transgressionDecayIntervalSeconds`.
-- State stores SHA-256 hashes for newly accepted text plus temporary-ban counters, not raw post text. Existing-board originality comes from the local database scan.
+- State stores temporary-ban counters and, for 10 minutes after Robot9000 allows a text, a SHA-256 hash of it reserved for that author, not raw post text. The reservation stops another author from posting the same text before the first publication is stored. It is not a confirmation that the text was published: the same author can send the text again after another challenge failed, and once it expires only the local database scan decides originality.
 
 ## Ban Semantics
 
@@ -76,7 +76,7 @@ corepack yarn build
 
 ## Test Coverage
 
-The test suite covers Robot9000 normalization, minimum text checks, Unicode blocking, image/link exclusion, escalating and decaying temporary bans, content edits, missing database fail-closed behavior, and duplicate detection against both the challenge state file and a real in-memory SQLite `comments`/`commentUpdates` database.
+The test suite covers Robot9000 normalization, minimum text checks, Unicode blocking, image/link exclusion, escalating and decaying temporary bans, content edits, missing database fail-closed behavior, duplicate detection against a real in-memory SQLite `comments`/`commentUpdates` database (including edited text and comments waiting for approval), and the state file's per-author text reservations: retries of unpublished text, expiry, pruning, and state files written before reservations had an author.
 
 The coverage badge reports line coverage generated with `yarn test:coverage`. On pushes to `master`, CI writes a Shields-compatible endpoint payload and publishes it to GitHub Pages.
 

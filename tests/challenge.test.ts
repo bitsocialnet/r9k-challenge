@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CommunityChallengeSetting } from "@pkcprotocol/pkc-js/dist/node/community/types.js";
@@ -72,7 +73,7 @@ const createSqliteCommunity = (rows: SqliteStoredCommentRow[] = []) => {
     VALUES (?, ?, ?, ?)
   `);
 
-  for (const row of rows) {
+  const insertRow = (row: SqliteStoredCommentRow) => {
     insertComment.run(
       row.cid,
       row.title ?? null,
@@ -92,7 +93,9 @@ const createSqliteCommunity = (rows: SqliteStoredCommentRow[] = []) => {
         row.edit ?? null,
       );
     }
-  }
+  };
+
+  rows.forEach(insertRow);
 
   return {
     community: {
@@ -102,6 +105,7 @@ const createSqliteCommunity = (rows: SqliteStoredCommentRow[] = []) => {
       },
     },
     db,
+    insertRow,
   };
 };
 
@@ -145,13 +149,19 @@ const createContentEditRequest = (
   content: string,
   {
     commentCid = "comment-1",
+    authorAddress,
     signaturePublicKey = "author-public-key-1",
-  }: { commentCid?: string; signaturePublicKey?: string } = {},
+  }: {
+    commentCid?: string;
+    authorAddress?: string;
+    signaturePublicKey?: string;
+  } = {},
 ) =>
   ({
     commentEdit: {
       commentCid,
       content,
+      ...(authorAddress ? { author: { address: authorAddress } } : {}),
       signature: {
         publicKey: signaturePublicKey,
       },
@@ -166,18 +176,39 @@ const createVoteRequest = () =>
     },
   }) as DecryptedChallengeRequestMessageTypeWithCommunityAuthor;
 
-const runChallenge = (
+let storedComments: StoredCommentRow[];
+
+const runChallenge = async (
   request: DecryptedChallengeRequestMessageTypeWithCommunityAuthor,
   optionOverrides: Record<string, unknown> = {},
-  runtimeCommunity: unknown = createRuntimeCommunity().community,
+  runtimeCommunity?: unknown,
 ) => {
   const challengeFile = ChallengeFileFactory(settings(optionOverrides));
-  return challengeFile.getChallenge({
+  const result = await challengeFile.getChallenge({
     challengeSettings: settings(optionOverrides),
     challengeRequestMessage: request,
     challengeIndex: 0,
-    community: runtimeCommunity,
+    community:
+      runtimeCommunity ?? createRuntimeCommunity(storedComments).community,
   });
+
+  // The default community acts like a node whose only challenge is Robot9000:
+  // it stores every accepted comment, so a later repost is found in its
+  // comments database.
+  if (
+    runtimeCommunity === undefined &&
+    request.comment &&
+    "success" in result &&
+    result.success
+  ) {
+    storedComments.push({
+      cid: `stored-${storedComments.length + 1}`,
+      title: request.comment.title,
+      content: request.comment.content,
+    });
+  }
+
+  return result;
 };
 
 const readState = async () =>
@@ -186,6 +217,7 @@ const readState = async () =>
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "r9k-challenge-"));
   statePath = join(tempDir, "state.json");
+  storedComments = [];
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-05-23T00:00:00Z"));
 });
@@ -268,10 +300,15 @@ describe("Bitsocial r9k challenge package", () => {
     }
   });
 
-  it("ignores SQLite rows that are pending, unapproved, removed, or deleted", async () => {
+  it("ignores SQLite rows that are unapproved, removed, or deleted", async () => {
     const { community, db } = createSqliteCommunity([
-      { cid: "pending", content: "held back", pendingApproval: 1 },
       { cid: "unapproved", content: "held back", approved: 0 },
+      {
+        cid: "disapproved-from-queue",
+        content: "held back",
+        pendingApproval: 0,
+        approved: 0,
+      },
       { cid: "removed", content: "held back", removed: 1 },
       {
         cid: "deleted",
@@ -452,5 +489,228 @@ describe("Bitsocial r9k challenge package", () => {
     await expect(runChallenge(createVoteRequest())).resolves.toEqual({
       success: true,
     });
+  });
+});
+
+describe("Robot9000 originality reservations", () => {
+  const reservationSeconds = 10 * 60;
+  const advanceSeconds = (seconds: number) =>
+    vi.setSystemTime(new Date(Date.now() + seconds * 1000));
+  const communityState = async () =>
+    (
+      (await readState()) as {
+        communities: Record<
+          string,
+          { originals: Record<string, unknown>; authors: object }
+        >;
+      }
+    ).communities[baseCommunity.address];
+
+  it("lets the same author retry text whose publication was never stored", async () => {
+    // Another challenge failed after Robot9000 allowed the text, so the node
+    // stored nothing and the author sends the same text again.
+    const { community, db } = createSqliteCommunity();
+
+    try {
+      await expect(
+        runChallenge(createCommentRequest("abandoned text"), {}, community),
+      ).resolves.toEqual({ success: true });
+      await expect(
+        runChallenge(createCommentRequest("abandoned text"), {}, community),
+      ).resolves.toEqual({ success: true });
+      expect((await communityState()).authors).toEqual({});
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects other authors while the text is reserved and frees it after the reservation expires", async () => {
+    const { community, db } = createSqliteCommunity();
+
+    try {
+      await expect(
+        runChallenge(createCommentRequest("in flight text"), {}, community),
+      ).resolves.toEqual({ success: true });
+
+      const raced = await runChallenge(
+        createCommentRequest("in flight text", { authorAddress: "author-2" }),
+        {},
+        community,
+      );
+      expect(raced).toMatchObject({ success: false });
+      expect(raced.error).toContain("Exact repost detected");
+
+      advanceSeconds(reservationSeconds);
+
+      await expect(
+        runChallenge(
+          createCommentRequest("in flight text", { authorAddress: "author-3" }),
+          {},
+          community,
+        ),
+      ).resolves.toEqual({ success: true });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("prunes expired reservations from the state file", async () => {
+    await runChallenge(createCommentRequest("old reservation"));
+    expect(Object.keys((await communityState()).originals)).toHaveLength(1);
+
+    advanceSeconds(reservationSeconds);
+    await runChallenge(
+      createCommentRequest("new reservation", { authorAddress: "author-2" }),
+    );
+
+    expect(Object.keys((await communityState()).originals)).toHaveLength(1);
+  });
+
+  it("reads state files whose reservations have no author", async () => {
+    const hash = (text: string) =>
+      createHash("sha256").update(text).digest("hex");
+    const now = Math.floor(Date.now() / 1000);
+    const entry = (seenAt: number) => ({
+      firstSeenAt: seenAt,
+      lastSeenAt: seenAt,
+      normalizedLength: 10,
+    });
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        version: 1,
+        communities: {
+          [baseCommunity.address]: {
+            originals: {
+              [hash("stale text")]: entry(now - reservationSeconds),
+              [hash("fresh text")]: entry(now),
+            },
+            authors: {},
+          },
+        },
+      }),
+    );
+
+    await expect(
+      runChallenge(createCommentRequest("stale text")),
+    ).resolves.toEqual({ success: true });
+    await expect(
+      runChallenge(
+        createCommentRequest("fresh text", { authorAddress: "author-2" }),
+      ),
+    ).resolves.toMatchObject({ success: false });
+  });
+
+  it("lets an author restore their own comment's earlier text through an edit", async () => {
+    const { community, db, insertRow } = createSqliteCommunity();
+    const editRequest = (content: string) =>
+      createContentEditRequest(content, {
+        commentCid: "comment-1",
+        authorAddress: "author-1",
+      });
+
+    try {
+      await expect(
+        runChallenge(createCommentRequest("first version"), {}, community),
+      ).resolves.toEqual({ success: true });
+      insertRow({ cid: "comment-1", content: "first version" });
+
+      await expect(
+        runChallenge(editRequest("second version"), {}, community),
+      ).resolves.toEqual({ success: true });
+      db.prepare("INSERT INTO commentUpdates (cid, edit) VALUES (?, ?)").run(
+        "comment-1",
+        JSON.stringify({ content: "second version" }),
+      );
+
+      await expect(
+        runChallenge(editRequest("first version"), {}, community),
+      ).resolves.toEqual({ success: true });
+      expect((await communityState()).authors).toEqual({});
+    } finally {
+      db.close();
+    }
+  });
+
+  it("frees the text of a removed comment once its reservation expires", async () => {
+    const { community, db, insertRow } = createSqliteCommunity();
+
+    try {
+      await expect(
+        runChallenge(createCommentRequest("removed text"), {}, community),
+      ).resolves.toEqual({ success: true });
+      insertRow({ cid: "comment-1", content: "removed text", removed: 1 });
+
+      advanceSeconds(reservationSeconds);
+
+      await expect(
+        runChallenge(
+          createCommentRequest("removed text", { authorAddress: "author-2" }),
+          {},
+          community,
+        ),
+      ).resolves.toEqual({ success: true });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("keeps text waiting for approval protected from its author and others", async () => {
+    // The node stored the comment in its approval queue. Approving a second
+    // copy later would publish the same text twice.
+    const { community, db, insertRow } = createSqliteCommunity();
+
+    try {
+      await expect(
+        runChallenge(createCommentRequest("queued text"), {}, community),
+      ).resolves.toEqual({ success: true });
+      insertRow({
+        cid: "comment-1",
+        content: "queued text",
+        pendingApproval: 1,
+      });
+
+      const resent = await runChallenge(
+        createCommentRequest("queued text"),
+        {},
+        community,
+      );
+      expect(resent).toMatchObject({ success: false });
+      expect(resent.error).toContain("Exact repost detected");
+
+      advanceSeconds(reservationSeconds);
+
+      const reposted = await runChallenge(
+        createCommentRequest("queued text", { authorAddress: "author-2" }),
+        {},
+        community,
+      );
+      expect(reposted).toMatchObject({ success: false });
+      expect(reposted.error).toContain("Exact repost detected");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("keeps a comment's edited text protected through the database scan", async () => {
+    const { community, db } = createSqliteCommunity([
+      {
+        cid: "comment-1",
+        content: "original wording",
+        edit: JSON.stringify({ content: "edited wording" }),
+      },
+    ]);
+
+    try {
+      const result = await runChallenge(
+        createCommentRequest("edited wording", { authorAddress: "author-2" }),
+        {},
+        community,
+      );
+      expect(result).toMatchObject({ success: false });
+      expect(result.error).toContain("Exact repost detected");
+    } finally {
+      db.close();
+    }
   });
 });
