@@ -19,12 +19,19 @@ const type = "text/plain";
 const description =
   "Reject exact text reposts with Robot9000-style escalating temporary bans.";
 const STATE_VERSION = 1;
+// getChallenge() runs before the publication is stored, and pkc-js offers no
+// hook to confirm or roll back. An allowed text is therefore only reserved for
+// its author long enough to cover answering other challenges and the node
+// storing the comment or refreshing an edit; after that the comments database
+// is the only record of what was posted.
+const ORIGINAL_RESERVATION_SECONDS = 10 * 60;
 
 const OriginalEntrySchema = z
   .object({
     firstSeenAt: z.number().int().nonnegative(),
     lastSeenAt: z.number().int().nonnegative(),
     normalizedLength: z.number().int().nonnegative(),
+    authorKey: z.string().optional(),
   })
   .strict();
 
@@ -50,6 +57,7 @@ const StateFileSchema = z
   })
   .strict();
 
+type OriginalEntry = z.infer<typeof OriginalEntrySchema>;
 type AuthorPenalty = z.infer<typeof AuthorPenaltySchema>;
 type CommunityState = z.infer<typeof CommunityStateSchema>;
 type StateFile = z.infer<typeof StateFileSchema>;
@@ -91,6 +99,7 @@ type ExistingCommentRow = {
   cid?: string;
   title?: string | null;
   content?: string | null;
+  editContent?: unknown;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -377,6 +386,22 @@ const getStoredCommentText = (row: ExistingCommentRow) =>
     .filter((part): part is string => part !== undefined)
     .join("\n");
 
+// A comment counts with its original text and, once the author edited it,
+// with the edited text that commentUpdates.edit.content now shows. The edited
+// content also counts without the title, because a content edit request
+// carries only the content.
+const getStoredCommentTexts = (row: ExistingCommentRow) =>
+  typeof row.editContent === "string"
+    ? [
+        getStoredCommentText(row),
+        getStoredCommentText({ ...row, content: row.editContent }),
+        row.editContent,
+      ]
+    : [getStoredCommentText(row)];
+
+// Comments waiting for approval count: approving them clears pendingApproval,
+// so they would otherwise become duplicates. Disapproved comments are purged
+// or marked approved = 0, which frees their text.
 const queryExistingCommentRows = (
   db: SqliteDatabase,
   excludeCid: string | undefined,
@@ -384,11 +409,11 @@ const queryExistingCommentRows = (
   db
     .prepare(
       `
-      SELECT c.cid, c.title, c.content
+      SELECT c.cid, c.title, c.content,
+        json_extract(cu.edit, '$.content') AS editContent
       FROM comments c
       LEFT JOIN commentUpdates cu ON cu.cid = c.cid
       WHERE (? IS NULL OR c.cid != ?)
-        AND (c.pendingApproval IS NULL OR c.pendingApproval != 1)
         AND COALESCE(cu.approved, 1) != 0
         AND (cu.removed IS NULL OR cu.removed IS NOT 1)
         AND (
@@ -413,11 +438,23 @@ const communityDatabaseHasOriginal = ({
   normalizedText: string;
   options: ParsedOptions;
 }) =>
-  queryExistingCommentRows(db, target.excludeCid).some(
-    (row) =>
-      normalizeRobot9000Text(getStoredCommentText(row), options) ===
-      normalizedText,
+  queryExistingCommentRows(db, target.excludeCid).some((row) =>
+    getStoredCommentTexts(row).some(
+      (text) => normalizeRobot9000Text(text, options) === normalizedText,
+    ),
   );
+
+const isReservationActive = (entry: OriginalEntry, now: number) =>
+  entry.lastSeenAt + ORIGINAL_RESERVATION_SECONDS > now;
+
+const pruneExpiredReservations = (
+  communityState: CommunityState,
+  now: number,
+) => {
+  for (const [hash, entry] of Object.entries(communityState.originals)) {
+    if (!isReservationActive(entry, now)) delete communityState.originals[hash];
+  }
+};
 
 const checkOriginality = async ({
   target,
@@ -436,6 +473,7 @@ const checkOriginality = async ({
 
   return withState(statePath, async (state) => {
     const communityState = getCommunityState(state, communityKey);
+    pruneExpiredReservations(communityState, now);
 
     if (!target.authorKey) {
       return reject(
@@ -488,8 +526,9 @@ const checkOriginality = async ({
     }
 
     const normalizedHash = sha256(normalizedText);
+    const reservation = communityState.originals[normalizedHash];
     if (
-      communityState.originals[normalizedHash] ||
+      (reservation && reservation.authorKey !== target.authorKey) ||
       communityDatabaseHasOriginal({ db, target, normalizedText, options })
     ) {
       const penalty = registerViolation({
@@ -510,9 +549,10 @@ const checkOriginality = async ({
     }
 
     communityState.originals[normalizedHash] = {
-      firstSeenAt: now,
+      firstSeenAt: reservation?.firstSeenAt ?? now,
       lastSeenAt: now,
       normalizedLength: normalizedText.length,
+      authorKey: target.authorKey,
     };
 
     return allow();
