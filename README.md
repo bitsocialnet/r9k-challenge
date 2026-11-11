@@ -64,6 +64,17 @@ Bitsocial exposes `author.community.banExpiresAt` for moderator bans, but a chal
 
 If Bitsocial later exposes a safe challenge-side author-ban API for rejected publications, this package can map the same penalty state to native `banExpiresAt`.
 
+## Downgrading
+
+Version 0.1.1 and earlier cannot read a state file whose text reservations record their author. They then reject every challenge request with a "state unavailable" error until the file is repaired. Before rolling back, stop the node and clear the reservations in the file at `statePath`, which keeps the temporary bans and transgression counts:
+
+```bash
+STATE=~/.bitsocial-r9k-challenge-state.json
+jq '.communities[].originals = {}' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+```
+
+Deleting the state file also works, but it resets every author's temporary ban and transgression count.
+
 ## Development
 
 ```bash
