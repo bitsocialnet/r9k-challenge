@@ -713,4 +713,38 @@ describe("Robot9000 originality reservations", () => {
       db.close();
     }
   });
+
+  it("protects a titled post's edited content without its title", async () => {
+    // A content edit request carries only the new content, so the edited
+    // content counts on its own as well as with the post's title.
+    const { community, db } = createSqliteCommunity([
+      {
+        cid: "comment-1",
+        title: "My Title",
+        content: "original wording",
+        edit: JSON.stringify({ content: "edited wording" }),
+      },
+      { cid: "comment-2", content: "other post" },
+    ]);
+
+    try {
+      for (const request of [
+        createCommentRequest("edited wording", { authorAddress: "author-2" }),
+        createContentEditRequest("edited wording", {
+          commentCid: "comment-2",
+          authorAddress: "author-3",
+        }),
+        createCommentRequest("edited wording", {
+          title: "My Title",
+          authorAddress: "author-4",
+        }),
+      ]) {
+        const result = await runChallenge(request, {}, community);
+        expect(result).toMatchObject({ success: false });
+        expect(result.error).toContain("Exact repost detected");
+      }
+    } finally {
+      db.close();
+    }
+  });
 });

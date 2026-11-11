@@ -387,12 +387,15 @@ const getStoredCommentText = (row: ExistingCommentRow) =>
     .join("\n");
 
 // A comment counts with its original text and, once the author edited it,
-// with the edited text that commentUpdates.edit.content now shows.
+// with the edited text that commentUpdates.edit.content now shows. The edited
+// content also counts without the title, because a content edit request
+// carries only the content.
 const getStoredCommentTexts = (row: ExistingCommentRow) =>
   typeof row.editContent === "string"
     ? [
         getStoredCommentText(row),
         getStoredCommentText({ ...row, content: row.editContent }),
+        row.editContent,
       ]
     : [getStoredCommentText(row)];
 
