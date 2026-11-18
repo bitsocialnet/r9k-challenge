@@ -33,12 +33,12 @@ jobs:
           # The action ends the session at Claude's first result. The code-review command starts its
           # first agent in the background and ends that turn to wait, so the review never ran and the
           # job still passed (anthropics/claude-code-action#1646). Keep every agent in the foreground.
-          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
           # Without the system prompt the main agent skipped the command's agents and skimmed the diff
           # itself, calling a 33-file refactor "mechanical", then posted "No issues found" on a pull
           # request with three planted bugs. With it, every step's agents run and all three were caught.
